@@ -7,6 +7,7 @@ Description: A Python script to generate random MPC problem for OSQP (Python) an
 
 import numpy as np
 import os
+import scipy.sparse as sp
 
 def export_xref_to_c(declare, data, nx):
     string = declare + "= {\n"
@@ -199,6 +200,158 @@ def osqp_export_data_to_python(xbar, A, B, Q, Qf, R, umin, umax, xmin, xmax, nx,
 
     f.close()
 
+def nasoq_export_data_to_c(xbar, A, B, Q, Qf, R, umin, umax, xmin, xmax, nx, nu, Nh, Nsim):
+    # Dimensions of the stacked problem
+    # States: (Nh+1)*nx
+    # Inputs: Nh*nu
+    Nstates = (Nh + 1)*nx
+    Ninputs = Nh*nu
+    Nz = Nstates + Ninputs
+
+    # Construct Hessian H:
+    # H is block diagonal:
+    # [Q, Q, ..., Q, Qf, R, R, ..., R]
+    Q_blocks = [Q for _ in range(Nh)] + [Qf]
+    R_blocks = [R for _ in range(Nh)]
+    H_blocks = Q_blocks + R_blocks
+    H = sp.block_diag(H_blocks, format='csc')
+
+    # Construct reference z_ref:
+    # xbar is Nsim-by-nx of reference states. (TODO: need a double-check)
+    # Use the first (Nh+1) entries of xbar for state reference along the horizon:
+    if Nsim < (Nh+1):
+        raise ValueError("Not enough xbar steps for the given horizon.")
+    x_ref = xbar[:(Nh+1), :]
+
+    u_ref = np.zeros((Nh, nu))
+    z_ref = np.concatenate([x_ref.flatten(), u_ref.flatten()])
+
+    # Compute q = -H z_ref
+    q = -H.dot(z_ref)
+
+    # Construct equality constraints:
+    # For k=0,...,Nh-1:
+    # x_{k+1} - A x_k - B u_k = 0
+    # And initial condition: x_0 = x_ref(0)
+    # Aeq z = beq:
+    # Variables order: z = [x_0; x_1; ...; x_Nh; u_0; ...; u_{Nh-1}]
+    # Size: Nstates = (Nh+1)*nx, Ninputs = Nh*nu
+
+    Aeq_init = sp.hstack([sp.eye(nx), sp.csc_matrix((nx, Nstates - nx + Ninputs))], format='csc')
+    beq_init = x_ref[0]
+
+    # Dynamics constraints:
+    # For k=0,...,Nh-1:
+    # x_{k+1} - A x_k - B u_k = 0
+    # Row structure: [0..x_k..x_{k+1}..u_k..]
+    Aeq_dyn_blocks = []
+    beq_dyn = []
+    for k in range(Nh):
+        # x_{k+1} index: (k+1)*nx to (k+2)*nx - 1
+        # x_k index: k*nx to (k+1)*nx - 1
+        # u_k index: Nstates + k*nu to Nstates + (k+1)*nu -1
+        row_x_next = sp.lil_matrix((nx, Nz))
+        # x_{k+1}
+        row_x_next[:, (k+1)*nx:(k+2)*nx] = sp.eye(nx)
+        # -A x_k
+        row_x_next[:, k*nx:(k+1)*nx] = -A
+        # -B u_k
+        row_x_next[:, Nstates + k*nu: Nstates + (k+1)*nu] = -B
+        Aeq_dyn_blocks.append(row_x_next.tocsc())
+        beq_dyn.append(np.zeros(nx))
+
+    Aeq_dyn = sp.vstack(Aeq_dyn_blocks, format='csc')
+    beq_dyn = np.concatenate(beq_dyn)
+
+    # Full equality matrix and vector:
+    Aeq = sp.vstack([Aeq_init, Aeq_dyn], format='csc')
+    beq = np.concatenate([beq_init, beq_dyn])
+
+    # Convert equalities to inequalities:
+    # Aeq z = beq  => Aeq z ≤ beq and -Aeq z ≤ -beq
+    Aeq_all = sp.vstack([Aeq, -Aeq], format='csc')
+    beq_all = np.concatenate([beq, -beq])
+
+    # Inequality constraints from state and input bounds:
+    # For each x_k: xmin ≤ x_k ≤ xmax
+    #    => x_k ≤ xmax and -x_k ≤ -xmin
+    # For each u_k: umin ≤ u_k ≤ umax
+    #    => u_k ≤ umax and -u_k ≤ -umin
+    #
+    # Construct block matrices for these:
+    # State bounds: (Nh+1)*nx states
+    # x ≤ xmax => (I for states, 0 for inputs)
+    I_states = sp.eye(Nstates, format='csc')
+    I_inputs = sp.eye(Ninputs, format='csc')
+    zero_si = sp.csc_matrix((Ninputs, Nstates))  # for u-bounds
+    zero_is = sp.csc_matrix((Nstates, Ninputs))  # for x-bounds
+
+    # x ≤ xmax
+    C_xmax = sp.hstack([I_states, zero_is], format='csc')
+    d_xmax = xmax.flatten().repeat(Nh+1)
+
+    # -x ≤ -xmin => multiply by -1:
+    C_xmin = sp.hstack([-I_states, zero_is], format='csc')
+    d_xmin = -xmin.flatten().repeat(Nh+1)
+
+    # u ≤ umax
+    C_umax = sp.hstack([zero_si, I_inputs], format='csc')
+    d_umax = umax.flatten().repeat(Nh)
+
+    # -u ≤ -umin
+    C_umin = sp.hstack([zero_si, -I_inputs], format='csc')
+    d_umin = -umin.flatten().repeat(Nh)
+
+    # Stack all inequality constraints:
+    C_ineq = sp.vstack([Aeq_all, C_xmax, C_xmin, C_umax, C_umin], format='csc')
+    d_ineq = np.concatenate([beq_all, d_xmax, d_xmin, d_umax, d_umin])
+
+    # Extract lower-triangular part of H:
+    H_lower = sp.tril(H).tocsc()
+    Hp, Hi, Hx = H_lower.indptr, H_lower.indices, H_lower.data
+    Cp, Ci, Cx = C_ineq.indptr, C_ineq.indices, C_ineq.data
+
+    # Create output directory
+    output_dir = 'random_problems/prob_nx_'+str(nx)
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+    hpp_file = os.path.join(output_dir, "rand_prob_nasoq_data.hpp")
+
+    with open(hpp_file, "w") as f:
+        f.write("#pragma once\n\n")
+        f.write('#include "osqp_api_types.h"\n')
+        f.write('#include <stddef.h>\n\n')
+
+        # Dimensions
+        f.write("#define NSTATES "+str(nx)+"\n")
+        f.write("#define NINPUTS "+str(nu)+"\n")
+        f.write("#define NHORIZON "+str(Nh)+"\n")
+        f.write("#define NTOTAL "+str(Nsim)+"\n")
+        f.write("// Number of decision variables\n")
+        f.write("#define NZ "+str(Nz)+"\n\n")
+
+        def write_array(name, arr, dtype='OSQPFloat'):
+            f.write("const "+dtype+" "+name+"["+str(len(arr))+"] = {")
+            f.write(",".join(map(str, arr)))
+            f.write("};\n\n")
+
+        def write_int_array(name, arr):
+            f.write("const OSQPInt "+name+"["+str(len(arr))+"] = {")
+            f.write(",".join(map(str, arr)))
+            f.write("};\n\n")
+
+        # Write H, C, q, d
+        write_int_array("Hp", Hp)
+        write_int_array("Hi", Hi)
+        write_array("Hx", Hx, 'OSQPFloat')
+
+        write_int_array("Cp", Cp)
+        write_int_array("Ci", Ci)
+        write_array("Cx", Cx, 'OSQPFloat')
+
+        write_array("q", q, 'OSQPFloat')
+        write_array("d", d_ineq, 'OSQPFloat')
+
 def generate_data(nx, nu, Nh, Nsim):
     np.random.seed(123)
     # Generate Q: Q_{ii} = U(0, 1)
@@ -258,6 +411,7 @@ def generate_data(nx, nu, Nh, Nsim):
 
     tinympc_export_data_to_c(xbar, A, B, Q, Qf, R, umin, umax, xmin, xmax, nx, nu, Nh, Nsim)
     osqp_export_data_to_python(xbar, A, B, Q, Qf, R, umin, umax, xmin, xmax, nx, nu, Nh, Nsim)
+    nasoq_export_data_to_c(xbar, A, B, Q, Qf, R, umin, umax, xmin, xmax, nx, nu, Nh, Nsim)
         
 if __name__ == '__main__':
     ## Vary Nh
