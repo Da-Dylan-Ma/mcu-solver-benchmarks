@@ -126,6 +126,44 @@ OSQPFloat xmax = 10000;
 OSQPFloat umin = -3;
 OSQPFloat umax = 3;
 
+void print_csc_matrix_pattern_csv(const OSQPCscMatrix* M, const char* matrix_name, int iteration) {
+  // Number of non-zero elements
+  int nz = M->p[M->n];
+
+  // Print CSV header line for each matrix line:
+  // Format: iteration,matrix_name,type,index,value
+  // Two lines per matrix: one for column pointers (p), one for row indices (i).
+  // For column pointers (p): we have (n+1) entries
+  // For row indices (i): we have nz entries
+
+  // Print column pointers
+  // Format:
+  // iteration,matrix_name,"p",col,p[col]
+  for (int col = 0; col <= M->n; col++) {
+    Serial.print(iteration);
+    Serial.print(",");
+    Serial.print(matrix_name);
+    Serial.print(",p,");
+    Serial.print(col);
+    Serial.print(",");
+    Serial.println(M->p[col]);
+  }
+
+  // Print row indices
+  // Format:
+  // iteration,matrix_name,"i",nz_index,i[nz_index]
+  for (int idx = 0; idx < nz; idx++) {
+    Serial.print(iteration);
+    Serial.print(",");
+    Serial.print(matrix_name);
+    Serial.print(",i,");
+    Serial.print(idx);
+    Serial.print(",");
+    Serial.println(M->i[idx]);
+  }
+}
+
+
 void setup()
 // int main()
 {
@@ -135,12 +173,21 @@ void setup()
 
   // start serial terminal
   Serial.begin(9600);
+
+  delay(15000);
+
   while (!Serial)
   { // wait to connect
     continue;
   }
 
-  Serial.println("Start");
+  // Serial.println("Start");
+
+  // Print CSV header (only once)
+  // Columns: iteration,matrix_name,array_type,array_index,value
+  // where array_type is either 'p' for column pointers or 'i' for row indices
+  Serial.println("iteration,matrix_name,array_type,array_index,value");
+
   for (int step = 0; step < NTOTAL - NHORIZON; step++)
   // for (int step = 0; step < 5; step++)
   {
@@ -158,7 +205,13 @@ void setup()
     // print_vector((osqp_data_solver.solution->x) + (NHORIZON + 1) * NSTATES, NINPUTS);
     add_noise(xn);
     memcpy(x, xn, NSTATES * (sizeof(OSQPFloat)));
-    printf("%10.4f %10d %10d\n", norm, osqp_data_solver.info->iter, end - start);
+    // printf("%10.4f %10d %10d\n", norm, osqp_data_solver.info->iter, end - start);
+
+    const OSQPCscMatrix* P_mat = osqp_get_matrix_P(&osqp_data_solver);
+    const OSQPCscMatrix* A_mat = osqp_get_matrix_A(&osqp_data_solver);
+
+    print_csc_matrix_pattern_csv(P_mat, "P", step);
+    print_csc_matrix_pattern_csv(A_mat, "A", step);
   }
 }
 

@@ -12,5 +12,15 @@
 # include "osqp_api_utils.h"
 #endif
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+const OSQPCscMatrix* osqp_get_matrix_P(const OSQPSolver* solver);
+const OSQPCscMatrix* osqp_get_matrix_A(const OSQPSolver* solver);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* ifndef OSQP_H */

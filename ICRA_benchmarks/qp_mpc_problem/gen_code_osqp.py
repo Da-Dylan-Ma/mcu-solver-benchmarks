@@ -58,7 +58,7 @@ def generate_osqp_solver(path):
     prob = osqp.OSQP()
 
     # Setup workspace and change alpha parameter
-    prob.setup(P, q, A, l, u, alpha=1.0, scaling=0, check_termination=1, eps_abs=1e-3, eps_rel=1e-3, eps_prim_inf=1e-4, eps_dual_inf=1e-4, max_iter=4000, polish=False, rho=0.1, adaptive_rho=False, warm_start=True)
+    prob.setup(P, q, A, l, u, alpha=1.0, scaling=0, check_termination=1, eps_abs=1e-4, eps_rel=1e-3, eps_prim_inf=1e-4, eps_dual_inf=1e-4, max_iter=4000, polish=False, rho=0.1, adaptive_rho=False, warm_start=True)
     # prob.setup(P, q, A, l, u, warm_starting=True, polish=True)
 
     # Generate C code

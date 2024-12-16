@@ -9,7 +9,7 @@
 #include "lin_alg.h"
 #include "printing.h"
 #include "timing.h"
-
+#include <stddef.h>
 
 #ifdef OSQP_CODEGEN
   #include "codegen.h"
@@ -27,6 +27,26 @@
 # include "interrupt.h"
 #endif
 
+#include "/home/mad29/projects/nasoq/mcu-solver-benchmarks/ICRA_benchmarks/teensy_osqp_benchmark/lib/osqp/inc/private/algebra_matrix.h"
+#include "/home/mad29/projects/nasoq/mcu-solver-benchmarks/ICRA_benchmarks/teensy_osqp_benchmark/lib/osqp/inc/private/algebra_impl.h"
+
+// Static helper function to get the CSC matrix from OSQPMatrix
+static const OSQPCscMatrix* OSQPMatrix_get_csc_const(const OSQPMatrix *M) {
+    // OSQPMatrix internally holds a pointer to OSQPCscMatrix. 
+    // Adjust this if the internal structure is different.
+    // Usually, OSQPMatrix has a field: OSQPCscMatrix* csc;
+    return M->csc;
+}
+
+const OSQPCscMatrix* osqp_get_matrix_P(const OSQPSolver* solver) {
+    if (!solver || !solver->work || !solver->work->data) return NULL;
+    return OSQPMatrix_get_csc_const(solver->work->data->P);
+}
+
+const OSQPCscMatrix* osqp_get_matrix_A(const OSQPSolver* solver) {
+    if (!solver || !solver->work || !solver->work->data) return NULL;
+    return OSQPMatrix_get_csc_const(solver->work->data->A);
+}
 
 /**********************
 * Main API Functions *
