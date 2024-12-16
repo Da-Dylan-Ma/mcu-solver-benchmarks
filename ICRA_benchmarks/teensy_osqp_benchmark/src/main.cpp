@@ -127,18 +127,8 @@ OSQPFloat umin = -3;
 OSQPFloat umax = 3;
 
 void print_csc_matrix_pattern_csv(const OSQPCscMatrix* M, const char* matrix_name, int iteration) {
-  // Number of non-zero elements
   int nz = M->p[M->n];
 
-  // Print CSV header line for each matrix line:
-  // Format: iteration,matrix_name,type,index,value
-  // Two lines per matrix: one for column pointers (p), one for row indices (i).
-  // For column pointers (p): we have (n+1) entries
-  // For row indices (i): we have nz entries
-
-  // Print column pointers
-  // Format:
-  // iteration,matrix_name,"p",col,p[col]
   for (int col = 0; col <= M->n; col++) {
     Serial.print(iteration);
     Serial.print(",");
@@ -149,9 +139,6 @@ void print_csc_matrix_pattern_csv(const OSQPCscMatrix* M, const char* matrix_nam
     Serial.println(M->p[col]);
   }
 
-  // Print row indices
-  // Format:
-  // iteration,matrix_name,"i",nz_index,i[nz_index]
   for (int idx = 0; idx < nz; idx++) {
     Serial.print(iteration);
     Serial.print(",");
@@ -183,9 +170,6 @@ void setup()
 
   // Serial.println("Start");
 
-  // Print CSV header (only once)
-  // Columns: iteration,matrix_name,array_type,array_index,value
-  // where array_type is either 'p' for column pointers or 'i' for row indices
   Serial.println("iteration,matrix_name,array_type,array_index,value");
 
   for (int step = 0; step < NTOTAL - NHORIZON; step++)

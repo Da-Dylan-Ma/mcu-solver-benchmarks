@@ -32,9 +32,6 @@
 
 // Static helper function to get the CSC matrix from OSQPMatrix
 static const OSQPCscMatrix* OSQPMatrix_get_csc_const(const OSQPMatrix *M) {
-    // OSQPMatrix internally holds a pointer to OSQPCscMatrix. 
-    // Adjust this if the internal structure is different.
-    // Usually, OSQPMatrix has a field: OSQPCscMatrix* csc;
     return M->csc;
 }
 
