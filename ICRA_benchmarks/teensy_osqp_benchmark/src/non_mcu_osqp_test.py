@@ -53,7 +53,7 @@ from scipy import sparse
 
 # # Prediction horizon
 # N = 10
-data = np.load('rand_prob_osqp_params.npz')
+data = np.load('/home/mad29/projects/nasoq/mcu-solver-benchmarks/ICRA_benchmarks/qp_mpc_problem/rand_prob_osqp_params.npz')
 nx = data['nx']
 nu = data['nu']
 Nh = data['Nh']
@@ -71,8 +71,10 @@ Ad = sparse.csc_matrix(A)
 Bd = sparse.csc_matrix(B)
 
 xbar = xbar_full[:,:Nh]
-xmin = -np.Inf*np.ones(nx)
-xmax = np.Inf*np.ones(nx)
+# xmin = -np.inf*np.ones(nx)
+# xmax = np.inf*np.ones(nx)
+xmin = data['xmin'][:, 0]
+xmax = data['xmax'][:, 0]
 x0 = np.zeros(nx)
 xr = np.array([0.,0.,1.,0.])
 
@@ -104,33 +106,34 @@ u = np.hstack([ueq, uineq])
 prob = osqp.OSQP()
 
 # Setup workspace
-prob.setup(P, q, A, l, u, warm_starting=True, verbose=False)
+prob.setup(P, q, A, l, u,check_termination=1, eps_abs=1e-6, warm_start=False, verbose=True)
 # prob.setup(P, q, A, l, u, alpha=1.0, scaling=0, check_termination=1, eps_abs=1e-5, eps_rel=1e-5, eps_prim_inf=1e-5, eps_dual_inf=1e-5, max_iter=10000, polish=False, rho=0.1, adaptive_rho=False, warm_start=True)
-
+res = prob.solve()
 # import pdb; pdb.set_trace()
 # Simulate in closed loop
-for i in range(Nsim-Nh-1):
-    # Solve
-    res = prob.solve()
-    # print("Res.x: ",res.x)
-    # print(np.linalg.norm(x0-xbar_full[:,i]))
-    print("x0: ",x0,"\nxbar: ",xbar_full[:,i],"\n")
-    print("diff: ", np.linalg.norm(x0-xbar_full[:,i]))
+# for i in range(Nsim-Nh-1):
+#     # Solve
+#     res = prob.solve()
+#     # print("Res.x: ",res.x)
+#     # print(np.linalg.norm(x0-xbar_full[:,i]))
+#     print("x0: ",x0,"\nxbar: ",xbar_full[:,i],"\n")
+#     print("diff: ", np.linalg.norm(x0-xbar_full[:,i]))
+#
+#     # Check solver status
+#     if res.info.status != 'solved':
+#         raise ValueError('OSQP did not solve the problem!')
+#
+#     # Apply first control input to the plant
+#     # ctrl = res.x[-Nh*nu:-(Nh-1)*nu]
+#     ctrl = res.x[(Nh +1) * nx:]
+#     x0 = Ad@x0 + Bd@ctrl
+#
+#     # Update initial state
+#     l[:nx] = -x0
+#     u[:nx] = -x0
+#     q = np.hstack([np.hstack([-Q@xbar_full[:,i+1+k] for k in range(Nh)]), -QN@xbar_full[:,i+1+Nh], np.zeros(Nh*nu)])
+#     prob.update(q=q,l=l, u=u)
+#
+# # if i == Nsim-nx-1:
+# print(res.info.obj_val)
 
-    # Check solver status
-    if res.info.status != 'solved':
-        raise ValueError('OSQP did not solve the problem!')
-
-    # Apply first control input to the plant
-    # ctrl = res.x[-Nh*nu:-(Nh-1)*nu]
-    ctrl = res.x[(Nh +1) * nx:]
-    x0 = Ad@x0 + Bd@ctrl
-
-    # Update initial state
-    l[:nx] = -x0
-    u[:nx] = -x0
-    q = np.hstack([np.hstack([-Q@xbar_full[:,i+1+k] for k in range(Nh)]), -QN@xbar_full[:,i+1+Nh], np.zeros(Nh*nu)])
-    prob.update(q=q,l=l, u=u)
-
-# if i == Nsim-nx-1:
-print(res.info.obj_val)

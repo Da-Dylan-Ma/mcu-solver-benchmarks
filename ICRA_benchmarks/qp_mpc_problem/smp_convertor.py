@@ -105,8 +105,10 @@ x0 = np.zeros(nx)
 xbar_full = data['x_bar'].T
 umin = data['umin'][:, 0]
 umax = data['umax'][:, 0]
-xmin = -np.inf*np.ones(nx)
-xmax = np.inf*np.ones(nx)
+# xmin = -np.inf*np.ones(nx)
+# xmax = np.inf*np.ones(nx)
+xmin = data['xmin'][:, 0]
+xmax = data['xmax'][:, 0]
 
 H = sparse.block_diag([sparse.kron(sparse.eye(Nh), Q), QN,
                        sparse.kron(sparse.eye(Nh), R)], format='csc')
@@ -131,4 +133,4 @@ qp_data = {
     "uineq": uineq,
 }
 
-save_smp_yaml("qp_problem.yml", qp_data)
+save_smp_yaml("qp_problem_05.yml", qp_data)
