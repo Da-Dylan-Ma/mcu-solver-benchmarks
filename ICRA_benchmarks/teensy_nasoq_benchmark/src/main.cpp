@@ -1,13 +1,3 @@
-/******************************************************************************
- * Teensy/NASOQ Single-File Example using Eigen
- *
- * NOTE: This file is our self-contained version of NASOQ’s ldl_left_sn_02_v2
- *       and the SolverSettings interface. We have replaced all the heavy 
- *       linear-algebra routines (GEMM, triangular solves, LDL factorization) 
- *       with Eigen calls. Only the row reordering (and some related symbolic 
- *       parts) remains as a placeholder/naive implementation.
- ******************************************************************************/ 
-
 #include <Arduino.h>
 #pragma push_macro("min")
 #pragma push_macro("max")
